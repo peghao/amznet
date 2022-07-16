@@ -34,6 +34,7 @@ enum operator
     ADD,
     ADD_C,
     ADD_BROAD, //✅
+    ADD_DISTRI,
     // SUB_C,
     TIMES,
     TIMES_C, //✅
@@ -491,20 +492,45 @@ tensor *add_constant(tensor *t1, float c)
     return t;
 }
 
-tensor *add_broad(tensor *t1, tensor *t2)
+tensor *add_distri(tensor *t1, tensor *t2)
 {
-    // size_t num_rows = t1->size/width(t1); //t1的行数
-    // //检查t2是不是列向量
-    // if(t2->dim != 2 || width(t2) != 1) printf("add_broad error: t2不是列向量！t2 shape:\n"), show_shape(t2), exit(-1);
-    // if(t2->size != num_rows) printf("add_broad error: t1 and t2 不能以广播方式相加！\n"), exit(-1);
-    
+    if(t1->dim > 2)
+        printf("add_distri error: 目前只支持2d向量的加法！\n"), exit(-1);
+    if(t2->dim !=2 || width(t2) != 1)
+        printf("add_distri error: t2不是列向量！\n"), exit(-1);
+    if(height(t2) != width(t1))
+        printf("add_distri error: t1和t2不能以广播方式相加！\n"), exit(-1);
+
+    size_t m = height(t1), n = width(t1);
+ 
     tensor *t = create(t1->shape, t1->dim);
 
-    // array_add_broad(t1->data, t2->data, t->data, num_rows, width(t1));
+    for(size_t i=0; i<m; i++)
+    {
+        array_add(t1->data + i*n, t2->data, t->data + i*n, n);
+    }
+    t->prev1 = t1;
+    t->prev2 = t2;
+    t->requires_grad = t1->requires_grad == true || t2->requires_grad == true ? true : false;
+    t->op = ADD_DISTRI;
+    t->is_end = true;
 
-    // // for(size_t i=0, t1_width=width(t1); i<t1_width; i++)
-    //     // array_add_constand(t1->data + i*t1_width, t->data + i*t1_width, t1_width, t2->data[i]); //width(t1)是等于t->size的
+    t1->is_end = false;
+    t2->is_end = false;
+    t1->num_quotes++;
+    t2->num_quotes++;
 
+    return t;
+}
+
+tensor *add_broad(tensor *t1, tensor *t2)
+{
+    size_t num_rows = t1->size/width(t1); //t1的行数
+    // //检查t2是不是列向量
+    if(t2->dim != 2 || width(t2) != 1) printf("add_broad error: t2不是列向量！t2 shape:\n"), show_shape(t2), exit(-1);
+    if(t2->size != num_rows) printf("add_broad error: t1 and t2 不能以广播方式相加！\n"), exit(-1);
+    
+    tensor *t = create(t1->shape, t1->dim);
 
     size_t m=height(t), n=width(t), k=t->size/(m*n);
     for(size_t i=0; i<k; i++)
@@ -776,8 +802,10 @@ void backward(tensor *t)
      * 2. t->op==NULL: 遇到计算图最前端的tensor时停止
      * 3. t->requires_grad == false: 一个节点不需要求梯度时停止
      */
-    if(t == NULL || t->op == NONE || t->requires_grad == false)
+    if(t == NULL || t->op == NONE || t->requires_grad == false || t->num_quotes != 0)
         return;
+
+    // printf("----------------------------------------------------------------\n");
 
     /*初始化梯度*/
     if(t->is_end == true)
@@ -811,14 +839,15 @@ void backward(tensor *t)
         printf("prev2 grad init down!\n");
         #endif
     }
-    #ifdef DEBUG
-    printf("prev grad init down!\n");
-    #endif
 
     matrix *grad_behind = matrix_none();
     grad_behind->data = t->grad;
     grad_behind->height = 1;
     grad_behind->width = t->size;
+
+    #ifdef DEBUG
+    show_grad("t grad::", t);
+    #endif
 
     if(t->op == MUL) //这里面算梯度的过程写的很不好看，以后得修饰一下
     {
@@ -1262,6 +1291,35 @@ void backward(tensor *t)
             t->prev2->num_quotes--;
         }
     }
+    else if(t->op == ADD_DISTRI)
+    {
+        if(t->prev1->requires_grad == true)
+        {
+            array_add(grad_behind->data, t->prev1->grad, t->prev1->grad, t->prev1->size);
+
+            t->prev1->num_quotes--;
+        }
+
+        if(t->prev2->requires_grad == true)
+        {
+            size_t m=height(t), n=width(t);
+            matrix *U_m_1 = matrix_constant(m, 1, 1.0);
+            matrix *I_n = matrix_unitary(n);
+            matrix *grad_Y_X_T = matrix_create(m*n, n);
+            kronecker_product(U_m_1, I_n, grad_Y_X_T);
+
+            matrix *grad_y_X = matrix_create(1, m*n);
+            matrix_mul(grad_behind, grad_Y_X_T, grad_y_X);
+
+            array_add(grad_y_X->data, t->prev2->grad, t->prev2->grad, t->prev2->size);
+
+            matrix_release(U_m_1);
+            matrix_release(I_n);
+            matrix_release(grad_y_X);
+
+            t->prev2->num_quotes--;
+        }
+    }
     else
     {
         printf("backward error: unknow operator!\n");
@@ -1271,9 +1329,7 @@ void backward(tensor *t)
 
     free(grad_behind);
 
-    if(t->prev1->num_quotes == 0)
-        backward(t->prev1);
-    if(t->prev2 != NULL && t->prev2->num_quotes == 0)
-        backward(t->prev2);
+    backward(t->prev1);
+    backward(t->prev2);
     
 }

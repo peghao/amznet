@@ -1,9 +1,10 @@
-#include "tensor.h"
+// #define DEBUG
 
+#include "tensor.h"
 
 tensor *linear(tensor *X, tensor *W, tensor *b)
 {
-    return add_broad(mul(X, W), b);
+    return add_distri(mul(X, W), b);
 }
 
 int main()
@@ -14,7 +15,7 @@ int main()
     tensor *train_labs = create_from_file("../dataset/MNIST/raw/train-labels-idx1-ubyte", 8, train_labs_shape, sizeof(train_labs_shape)/sizeof(size_t));
 
     // show(train_imgs);
-    show(train_labs);
+    // show("train_labs:", train_labs);
 
     size_t W1_shape[] = {28*28, 100}, b1_shape[] = {100, 1}, 
            W2_shape[] = {100, 100}, b2_shape[] = {100, 1},
@@ -28,19 +29,19 @@ int main()
 
     tensor *X1 = relu(linear(train_imgs, W1, b1));
     tensor *X2 = relu(linear(X1, W2, b2));
-    tensor *Y_hat = linear(X2, W3, b3);
+    tensor *net_out = linear(X2, W3, b3);
 
-    show(Y_hat);
-
-    tensor *Y_hat_softed = softmax(Y_hat);
-    show(Y_hat_softed);
-    tensor *loss = CrossEntropyLoss(Y_hat_softed, train_labs, 10);
-    // tensor *loss = sum_all(Y_hat);
-    show(loss);
+    tensor *predict_labs = softmax(net_out);
+    
+    tensor *loss = CrossEntropyLoss(predict_labs, train_labs, 10);
+    show("loss is:", loss);
+    // show("net out:", net_out);
+    // show("X1:", X1);
 
     backward(loss);
 
-    show_grad(Y_hat_softed);
-    show_grad(Y_hat);
-    show_grad(b1);
+    show_grad("b1 grad:", b1);
+    show_grad("b2 grad:", b2);
+    show_grad("b3 grad:", b3);
+    // show_grad("W2 grad:", W2);
 }

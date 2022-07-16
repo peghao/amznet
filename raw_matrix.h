@@ -37,6 +37,13 @@ void matrix_release(matrix *M)
     free(M);
 }
 
+matrix *matrix_constant(size_t height, size_t width, float c)
+{
+    matrix *M = matrix_create(height, width);
+    array_constant(M->data, height*width, c);
+    return M;
+}
+
 /*这个函数可以改成宏定义或者inline函数，可能会提升速度*/
 float *matrix_index(matrix *M, size_t i, size_t j)
 {
