@@ -10,16 +10,14 @@
 #include <string.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 //把这个注释掉，计算过程中的调试信息会消失
 // #define DEBUG
 
 #include "raw_array.h"
 #include "raw_matrix.h"
-
-#define true 0
-#define false 1
-typedef int bool;
+#include "linked_list.h"
 
 //83-1 和 83-4 需要做相关性
 
@@ -43,7 +41,8 @@ enum operator
     LOG, //✅
     EXP, //✅
     TRANSPOSE,
-    RELU
+    RELU,
+    CONST // 运算过程中引入的常数张量
 };
 
 
@@ -267,6 +266,57 @@ tensor *create_from_file(char *name, size_t offset, size_t *shape, size_t dim)
     return t;
 }
 
+void delete(tensor *t)
+{
+    free(t->data);free(t->shape);
+    if(t->requires_grad == true && t->grad != NULL) free(t->grad);
+    free(t);
+}
+
+/*递归释放计算图可能会double free，所以采用逻辑复杂的非递归方法*/
+void release(tensor *t)
+{
+    /*将计算图t中的所有tensor添加到一个链表中（不采用递归）*/
+    size_t num_append = 0;
+    linked_list *node_list = list_create(t);
+    linked_list *added_head = node_list;
+    num_append = 1;
+
+    for(;;)
+    {
+        int temp_num_append = 0;
+        for(int i=0; i<num_append; i++)
+        {
+            tensor *temp_node = list_index(added_head, i)->p;
+            tensor *temp_prev1 = temp_node->prev1, *temp_prev2 = temp_node->prev2;
+            if(temp_prev1 != NULL) if(append_no_repeat(node_list, temp_prev1) == true) temp_num_append++;
+            if(temp_prev2 != NULL) if(append_no_repeat(node_list, temp_prev2) == true) temp_num_append++;
+        }
+        if(temp_num_append == 0) break;
+        added_head = list_index(added_head, num_append);
+        num_append = temp_num_append;
+    }
+
+    #ifdef DEBUG
+    printf("node list len:%lu\n", list_len(node_list));
+    #endif
+
+    /*遍历链表中的所有元素，就相当于遍历了整个计算图*/
+
+    for(linked_list *node_iterator=node_list; node_iterator != NULL; node_iterator = node_iterator->next)
+    {
+        tensor *temp_tensor = node_iterator->p; //to be free
+        if(temp_tensor->op != NONE)
+        {
+            delete(temp_tensor);
+            #ifdef DEBUG
+            printf("freed:%p\n", temp_tensor);
+            #endif
+        }
+    }
+    list_free(node_list);
+}
+
 /*对张量t1和t2做逐元素乘法，这里t1和t2必须是两个形状相同的张量*/
 tensor *times(tensor *t1, tensor *t2)
 {
@@ -300,6 +350,7 @@ tensor *times_constant(tensor *t1, float c)
     size_t shape_t2[] = {1,1};
     tensor *t2 = create(shape_t2, 2);
     t2->data[0] = c;
+    t2->op = CONST;
 
     t->prev1 = t1;
     t->prev2 = t2;
@@ -432,6 +483,7 @@ tensor *sum(tensor *t1, size_t dim)
 
     size_t shape_t2[] = {1,2};
     tensor *t2 = create(shape_t2, 2);
+    t2->op = CONST;
     ((size_t *)(t2->data))[0] = dim; //将size_t类型的dim以二进制的方式储存在t2中，以后使用的时候，也必须以同样的方式“解包”出来
     
     t->prev1 = t1;
@@ -791,6 +843,11 @@ tensor *relu(tensor *x)
     x->is_end = false;
     x->num_quotes++;
     return y;
+}
+
+tensor *linear(tensor *X, tensor *W, tensor *b)
+{
+    return add_distri(mul(X, W), b);
 }
 
 /*通过递归的方式反向传播计算梯度*/

@@ -1,3 +1,14 @@
 Release Note：
+
+2022-07-16
 1. 解决了test_mnist.c计算结果和pytorch不一致的问题。该问题由以下两个原因导致：1反向传播流程控制·问题，修改了递归停止的条件 2全连接层bias张量不应该使用add_broad函数相加，为此新增了add_distri函数
 2. 在matrix.h中新增了一个matrix_constant函数
+
+2022-07-24
+1. 为tensor添加了release函数，可以释放计算图
+2. 更新了test_mnist.c，可以通过正向-反向的循环训练网络参数，实现loss值下降
+遇到的问题：
+1. 如何区分计算图的输入tensor和计算中临时创建的tensor？因为两者的requires_grad属性都是false
+解决方案：把临时tensor的op设为UNKNOW或CONST来区分
+2. 递归释放计算图时可能会对同一个tensor double free，如何避免？
+解决方案：不用递归地遍历计算图，将计算图中的所有tensor添加到一个链表中，然后遍历链表逐一释放计算图中的节点

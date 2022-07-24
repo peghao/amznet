@@ -2,11 +2,6 @@
 
 #include "tensor.h"
 
-tensor *linear(tensor *X, tensor *W, tensor *b)
-{
-    return add_distri(mul(X, W), b);
-}
-
 int main()
 {
     size_t train_imgs_shape[] = {5, 28*28};
@@ -27,21 +22,32 @@ int main()
     W2->requires_grad = true; b2->requires_grad = true;
     W3->requires_grad = true; b3->requires_grad = true;
 
-    tensor *X1 = relu(linear(train_imgs, W1, b1));
-    tensor *X2 = relu(linear(X1, W2, b2));
-    tensor *net_out = linear(X2, W3, b3);
+    for(int i=0; i<10; i++)
+    {
 
-    tensor *predict_labs = softmax(net_out);
-    
-    tensor *loss = CrossEntropyLoss(predict_labs, train_labs, 10);
-    show("loss is:", loss);
-    // show("net out:", net_out);
-    // show("X1:", X1);
+        tensor *X1 = relu(linear(train_imgs, W1, b1));
+        tensor *X2 = relu(linear(X1, W2, b2));
+        tensor *net_out = linear(X2, W3, b3);
 
-    backward(loss);
+        tensor *predict_labs = softmax(net_out);
+        
+        tensor *loss = CrossEntropyLoss(predict_labs, train_labs, 10);
+        show("loss is:", loss);
 
-    show_grad("b1 grad:", b1);
-    show_grad("b2 grad:", b2);
-    show_grad("b3 grad:", b3);
-    // show_grad("W2 grad:", W2);
+        backward(loss);
+
+        release(loss);
+
+        float lr = 0.0001; //学习率
+
+        array_linear(W1->grad, -lr, W1->data, W1->data, W1->size);
+        array_linear(W2->grad, -lr, W2->data, W2->data, W2->size);
+        array_linear(W3->grad, -lr, W3->data, W3->data, W3->size);
+        array_linear(b1->grad, -lr, b1->data, b1->data, b1->size);
+        array_linear(b2->grad, -lr, b2->data, b2->data, b2->size);
+        array_linear(b3->grad, -lr, b3->data, b3->data, b3->size);
+    }
+
+    printf("system paused!\n"); //停下来看看内存有没有泄露
+    getchar();
 }

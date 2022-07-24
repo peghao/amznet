@@ -166,6 +166,13 @@ void array_times_broad(float *t1, float *t2, float *t, size_t num_row, size_t ro
         array_times_constand(t1+i*row_size, t+i*row_size, row_size, t2[i]);
 }
 
+/*t = a*x + b*/
+void array_linear(float *x, float a, float *b, float *t, size_t size)
+{
+    for(size_t i=0; i<size; i++)
+        t[i] = a*x[i] + b[i];
+}
+
 float array_dot(float *t1, float *t2, size_t size)
 {
     float t = 0.0;

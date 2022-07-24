@@ -6,12 +6,17 @@ import torchvision
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+def softmax(X):
+    exp_x = torch.exp(X)
+    return exp_x/torch.sum(exp_x, dim=-1).reshape(X.shape[0], 1)
+
+def MYLoss(Y_hat, Y):
+    return -(torch.log(Y_hat) * Y).sum()
+
 BATCHSIZE = 128
 
 transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
-train_data = torchvision.datasets.MNIST("../../dataset", train=True, transform=transform)
-# train_loader = torch.utils.data.DataLoader(train_data, batch_size=BATCHSIZE, shuffle=False, num_workers=1)
-# plt.imshow(train_data.data[0], cmap='gray')
+train_data = torchvision.datasets.MNIST("../dataset", train=True, transform=transform)
 
 W1 = torch.linspace(-0.05, 0.05, 28*28*100).reshape(28*28, 100)
 W2 = torch.linspace(-0.05, 0.05, 100*100).reshape(100, 100)
@@ -29,27 +34,24 @@ b3.requires_grad = True
 
 X0 = train_data.data[0:5].float().reshape(5, 28*28)
 Y = torch.nn.functional.one_hot(train_data.targets[0:5], num_classes=10)
-X1 = torch.relu(X0 @ W1 + b1)
-X2 = torch.relu(X1 @ W2 + b2)
-X3 = X2 @ W3 + b3
-X3.retain_grad()
 
-def softmax(X):
-    exp_x = torch.exp(X)
-    return exp_x/torch.sum(exp_x, dim=-1).reshape(X.shape[0], 1)
+for steps in range(10):
 
-def MYLoss(Y_hat, Y):
-    return -(torch.log(Y_hat) * Y).sum()
+    X1 = torch.relu(X0 @ W1 + b1)
+    X2 = torch.relu(X1 @ W2 + b2)
+    X3 = X2 @ W3 + b3
 
-Y_hat = softmax(X3)
-loss = MYLoss(Y_hat, Y)
-loss.backward()
+    Y_hat = softmax(X3)
+    loss = MYLoss(Y_hat, Y)
+    loss.backward()
 
-# print(train_data.targets[0:5])
-print(loss)
-# print(X3)
-# print(X1)
-print(b1.grad)
-print(b2.grad)
-print(b3.grad)
-# print(W2.grad)
+    print(loss)
+
+    lr = 0.0001
+    with torch.no_grad():
+        W1 -= lr*W1.grad
+        W2 -= lr*W2.grad
+        W3 -= lr*W3.grad
+        b1 -= lr*b1.grad
+        b2 -= lr*b2.grad
+        b3 -= lr*b3.grad
