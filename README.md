@@ -12,23 +12,14 @@ test.py: 用pytorch实现的test.c的功能，用来验证test.c的计算结果�
 
 # 编译
 
-*（以编译test_sum_all.c为例）*
+编译环境：
 
-**Windows编译：**
-编译器：clang version 14.0.0 Target: x86_64-w64-windows-gnu（下载链接：[LLVM-MingW](https://github.com/mstorsjo/llvm-mingw/)）
+Ubuntu 20.04.4
 
-`clang test_sum_all.c`
+gcc 9.4.0
 
-编译生成的文件是a.exe
+make 4.2.1
 
-**Ubuntu编译：**
+在项目根目录执行`make`即可生成tensor的动态链接库
 
-编译器：gcc version 9.4.0
-
-`gcc test_sum_all.c -lm`
-
-编译器：clang version 10.0.0-4ubuntu1 Target: x86_64-pc-linux-gnu
-
-`clang test_sum_all.c -lm`
-
-编译生成的文件是a.out
+执行`make test_mnist`生成一个在mnist数据集上的全连接神经网络示例程序

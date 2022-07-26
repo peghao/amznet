@@ -35,7 +35,7 @@ b3.requires_grad = True
 X0 = train_data.data[0:5].float().reshape(5, 28*28)
 Y = torch.nn.functional.one_hot(train_data.targets[0:5], num_classes=10)
 
-for steps in range(10):
+for steps in range(100):
 
     X1 = torch.relu(X0 @ W1 + b1)
     X2 = torch.relu(X1 @ W2 + b2)
@@ -45,9 +45,9 @@ for steps in range(10):
     loss = MYLoss(Y_hat, Y)
     loss.backward()
 
-    print(loss)
+    print(f"steps:{steps}, loss:{loss/5}");
 
-    lr = 0.0001
+    lr = 0.00001
     with torch.no_grad():
         W1 -= lr*W1.grad
         W2 -= lr*W2.grad

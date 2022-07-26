@@ -1,4 +1,7 @@
 // #define DEBUG
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #include "tensor.h"
 
@@ -22,7 +25,7 @@ int main()
     W2->requires_grad = true; b2->requires_grad = true;
     W3->requires_grad = true; b3->requires_grad = true;
 
-    for(int i=0; i<10; i++)
+    for(int i=0; i<100; i++)
     {
 
         tensor *X1 = relu(linear(train_imgs, W1, b1));
@@ -32,13 +35,14 @@ int main()
         tensor *predict_labs = softmax(net_out);
         
         tensor *loss = CrossEntropyLoss(predict_labs, train_labs, 10);
-        show("loss is:", loss);
+        printf("steps:%d, loss:%f\n", i, loss->data[0]/5);
+        // show("loss is:", loss);
 
         backward(loss);
 
         release(loss);
 
-        float lr = 0.0001; //学习率
+        float lr = 0.00001; //学习率
 
         array_linear(W1->grad, -lr, W1->data, W1->data, W1->size);
         array_linear(W2->grad, -lr, W2->data, W2->data, W2->size);
@@ -46,6 +50,7 @@ int main()
         array_linear(b1->grad, -lr, b1->data, b1->data, b1->size);
         array_linear(b2->grad, -lr, b2->data, b2->data, b2->size);
         array_linear(b3->grad, -lr, b3->data, b3->data, b3->size);
+
     }
 
     printf("system paused!\n"); //停下来看看内存有没有泄露

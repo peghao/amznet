@@ -12,3 +12,7 @@ Release Note：
 解决方案：把临时tensor的op设为UNKNOW或CONST来区分
 2. 递归释放计算图时可能会对同一个tensor double free，如何避免？
 解决方案：不用递归地遍历计算图，将计算图中的所有tensor添加到一个链表中，然后遍历链表逐一释放计算图中的节点
+
+2022-07-26
+1. 调整了项目结构，为项目增加了Makefile
+2. 把tensor.h编译成动态链接库
