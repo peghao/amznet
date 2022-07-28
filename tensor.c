@@ -167,7 +167,7 @@ tensor *create(size_t *shape, size_t dim)
     tensor *t = none();
     t->size = size;
     t->data = (float *)malloc(size * sizeof(float)); //为张量的数据分配内存
-    t->shape = memcpy(malloc(dim*sizeof(size_t)), shape, dim*sizeof(size_t)); //把传入的参数copy一份，把copy出来的shape用来初始化新创建的tensor。为什么要copy呢？因为传进来的shape可能是一个局部变量，也可能是应一个tensor的shape
+    t->shape = (size_t*)memcpy(malloc(dim*sizeof(size_t)), shape, dim*sizeof(size_t)); //把传入的参数copy一份，把copy出来的shape用来初始化新创建的tensor。为什么要copy呢？因为传进来的shape可能是一个局部变量，也可能是应一个tensor的shape
     t->dim = dim;
     return t;
 }
@@ -223,7 +223,7 @@ tensor *create_from_file(char *name, size_t offset, size_t *shape, size_t dim)
     return t;
 }
 
-void delete(tensor *t)
+void tensor_free(tensor *t)
 {
     free(t->data);
     free(t->shape);
@@ -231,8 +231,7 @@ void delete(tensor *t)
     free(t);
 }
 
-/*递归释放计算图可能会double free，所以采用逻辑复杂的非递归方法*/
-void release(tensor *t)
+linked_list *to_linked_list(tensor *t)
 {
     /*将计算图t中的所有tensor添加到一个链表中（不采用递归）*/
     size_t num_append = 0;
@@ -255,18 +254,25 @@ void release(tensor *t)
         num_append = temp_num_append;
     }
 
+    return node_list;
+}
+
+/*递归释放计算图可能会double free，所以采用逻辑复杂的非递归方法*/
+void release(tensor *t)
+{
+    linked_list *node_list = to_linked_list(t);
+
     #ifdef DEBUG
     printf("node list len:%lu\n", list_len(node_list));
     #endif
 
     /*遍历链表中的所有元素，就相当于遍历了整个计算图*/
-
     for(linked_list *node_iterator=node_list; node_iterator != NULL; node_iterator = node_iterator->next)
     {
         tensor *temp_tensor = node_iterator->p; //to be free
         if(temp_tensor->op != NONE)
         {
-            delete(temp_tensor);
+            tensor_free(temp_tensor);
             #ifdef DEBUG
             printf("freed:%p\n", temp_tensor);
             #endif
@@ -778,11 +784,6 @@ tensor *relu(tensor *x)
     x->is_end = false;
     x->num_quotes++;
     return y;
-}
-
-tensor *linear(tensor *X, tensor *W, tensor *b)
-{
-    return add_distri(mul(X, W), b);
 }
 
 /*通过递归的方式反向传播计算梯度*/

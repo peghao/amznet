@@ -47,7 +47,7 @@ for steps in range(100):
 
     print(f"steps:{steps}, loss:{loss/5}");
 
-    lr = 0.00001
+    lr = 0.0001
     with torch.no_grad():
         W1 -= lr*W1.grad
         W2 -= lr*W2.grad

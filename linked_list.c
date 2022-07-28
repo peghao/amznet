@@ -89,6 +89,12 @@ linked_list *list_index(linked_list *list, size_t i)
     return list;
 }
 
+linked_list *search(linked_list *head, void *p)
+{
+    for(; head != NULL; head=head->next) if(head->p == p) return head;
+    return NULL;
+}
+
 uint64_t list_in(linked_list *head, void *p)
 {
     for(size_t i=0; ;i++)
