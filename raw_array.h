@@ -16,6 +16,7 @@ float array_dot(float *t1, float *t2, size_t size);
 void array_div_constant(float *t1, float *t, size_t size, float c);
 void array_div_broad(float *t1, float *t2, float *t, size_t num_row, size_t row_size);
 void array_sum(float *t, size_t size, float *sum);
+float array_sum_rt(float *t, size_t size);
 void array_log(float *x, float *y, size_t size);
 void array_exp(float *x, float *y, size_t size);
 float array_max(float *t1, size_t size);

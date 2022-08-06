@@ -12,7 +12,7 @@ extern "C"
 };
 
 /*model基类*/
-class model {
+class Model {
 protected:
     tensor **params = nullptr;
     tensor **consts = nullptr;
@@ -22,11 +22,10 @@ public:
 };
 
 /*线性层*/
-class linear : model {
+class Linear : Model {
 public:
-    linear(uint32_t input_features, uint32_t output_features);
+    Linear(uint32_t input_features, uint32_t output_features);
     tensor *forward(tensor *x);
 };
-
 
 #endif //AMZNET_MODEL_H

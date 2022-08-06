@@ -85,7 +85,6 @@ void matrix_mul(matrix *M1, matrix *M2, matrix *M)
 {
     /*假设M1是m×n矩阵， M2是n×s矩阵*/
     size_t m=M1->height, n=M1->width, s=M2->width;
-    // struct matrix *M = matrix_create(m, s);
     for(size_t i=0; i<m; i++)
     for(size_t j=0; j<s; j++)
     {

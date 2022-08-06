@@ -200,6 +200,13 @@ void array_sum(float *t, size_t size, float *sum)
         *sum += t[i];
 }
 
+float array_sum_rt(float *t, size_t size)
+{
+    float sum = 0.0f;
+    for(size_t i=0; i<size; i++)
+        sum += t[i];
+    return sum;
+}
 // void array_sin(float *x, float *y, size_t size)
 // {
 //     for(size_t i=0; i<size; i++)

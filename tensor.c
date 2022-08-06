@@ -277,6 +277,12 @@ void release(tensor *t)
             printf("freed:%p\n", temp_tensor);
             #endif
         }
+        /*对需要计算梯度的tensor的梯度清零，相当于pytorch里的zero_grad()*/
+        if(temp_tensor->op == NONE && temp_tensor->requires_grad == true && temp_tensor->grad != NULL)
+        {
+            array_constant(temp_tensor->grad, temp_tensor->size, 0.0f);
+            // show_grad("zero grad:", temp_tensor);
+        }
     }
     list_free(node_list);
 }
@@ -576,9 +582,6 @@ tensor *div_broad(tensor *t1, tensor *t2)
     
     tensor *t = create(t1->shape, t1->dim);
 
-    // array_div_broad(t1->data, t2->data, t->data, t1_rows, width(t1));
-
-
     size_t m=height(t), n=width(t), k=t->size/(m*n);
     for(size_t i=0; i<k; i++)
     for(size_t j=0; j<m; j++)
@@ -707,13 +710,6 @@ tensor *log_t(tensor *x)
     return y;
 }
 
-// tensor *pow_t(tensor *x1, tensor *x2)
-// {
-//     tensor *y = create(x1->shape, x1->dim);
-//     array_pow(x1->data, x2->data, y->data, x1->size);
-//     return y;
-// }
-
 tensor *exp_t(tensor *x)
 {
     tensor *y = create(x->shape, x->dim);
@@ -800,11 +796,15 @@ void backward(tensor *t)
 
     // printf("----------------------------------------------------------------\n");
 
-    /*初始化梯度*/
+    /*初始化工作*/
     if(t->is_end == true)
     {
         if(t->size != 1)
             printf("backward error: 只支持对标量反向传播！\n"), exit(-1);
+        
+        if(isnan(t->data[0]) == true)
+            printf("backward error: try to backward a NaN tensor!\n"), exit(-1);
+
         if(t->grad != NULL) warning(), free(t->grad);
         
         t->grad = (float *)malloc(1 * sizeof(float));
@@ -833,10 +833,8 @@ void backward(tensor *t)
         #endif
     }
 
-    matrix *grad_behind = matrix_none();
-    grad_behind->data = t->grad;
-    grad_behind->height = 1;
-    grad_behind->width = t->size;
+    matrix *G = matrix_none();
+    matrix_init(G, t->grad, 1, t->size);
 
     #ifdef DEBUG
     show_grad("t grad::", t);
@@ -860,26 +858,11 @@ void backward(tensor *t)
         /*计算prev1的梯度*/
         if(t->prev1->requires_grad == true)
         {
-            
-            matrix *B_matrix = matrix_none();
-            matrix_init(B_matrix, B->data, s, n);
-            matrix *B_T = matrix_create(n, s);
-            matrix_transpose(B_matrix, B_T);
-
-            matrix *I_km = matrix_unitary(k*m);
-            matrix *grad_C_A_T = matrix_create(k*m*n, k*m*s);
-
-            kronecker_product(I_km, B_T, grad_C_A_T);
-
-            matrix *grad_y_A = matrix_create(1, A->size); //A->size = k*m*s
-            matrix_mul(grad_behind, grad_C_A_T, grad_y_A);
-            array_add(grad_y_A->data, A->grad, A->grad, A->size);
-
-            free(B_matrix);
-            matrix_release(B_T);
-            matrix_release(I_km);
-            matrix_release(grad_C_A_T);
-            matrix_release(grad_y_A);
+            for(size_t i=0; i<k*m; i++)
+            for(size_t j=0; j<s; j++)
+            {
+                A->grad[i*s+j] += array_dot(t->grad+i*n, B->data+j*n, n);
+            }
 
             t->prev1->num_quotes--;
         }
@@ -887,30 +870,12 @@ void backward(tensor *t)
         /*计算prev2的梯度*/
         if(t->prev2->requires_grad == true)
         {
-            matrix *grad_C_B_T = matrix_create(k*m*n, s*n);
-            matrix *grad_C_B_T_i = matrix_none();
-
-            matrix *A_i_matrix = matrix_none();
-
-            matrix *I_n = matrix_unitary(n);
-            for(size_t i=0; i<k; i++)
-            {
-                matrix_init(A_i_matrix, (A->data + i*m*s), m, s);
-                matrix_init(grad_C_B_T_i, (grad_C_B_T->data + i*m*n*s*n), m*n, s*n);
-                kronecker_product(A_i_matrix, I_n, grad_C_B_T_i);
-            }
-
-            matrix *grad_y_B = matrix_create(s, n);
-
-            matrix_mul(grad_behind, grad_C_B_T, grad_y_B);
+            matrix *grad_y_B = matrix_constant(s, n, 0.0f);
+            for(size_t j=0; j<k*m; j++)
+            for(size_t i=0; i<s; i++)
+                array_linear(G->data+j*n, A->data[j*s+i], grad_y_B->data+i*n, grad_y_B->data+i*n, n);
 
             array_add(grad_y_B->data, B->grad, B->grad, B->size);
-
-            /*清理临时变量/释放内存*/
-            matrix_release(grad_C_B_T);
-            free(grad_C_B_T_i);
-            free(A_i_matrix);
-            matrix_release(I_n);
             matrix_release(grad_y_B);
 
             t->prev2->num_quotes--;
@@ -924,22 +889,8 @@ void backward(tensor *t)
             #endif
             /*假设Y = SUM(A) = SUM(t->prev1), A:m×n*/
             tensor *A = t->prev1;
-            size_t A_size = t->prev1->size;
-            // size_t m = height(A);
-            // size_t n = width(A);
 
-            matrix *grad_Y_A_T = matrix_create(1, A->size);
-            array_constant(grad_Y_A_T->data, A->size, 1.0);
-
-            matrix *grad_y_A = matrix_create(1, A->size);
-
-            matrix_mul(grad_behind, grad_Y_A_T, grad_y_A);
-
-            array_add(grad_y_A->data, A->grad, A->grad, A->size);
-
-            matrix_release(grad_Y_A_T);
-            //free(grad_behind);
-            matrix_release(grad_y_A);
+            array_add_constant(A->grad, A->grad, A->size, G->data[0]);
 
             t->prev1->num_quotes--;
         }
@@ -977,7 +928,7 @@ void backward(tensor *t)
             kronecker_product(temp, I_t, grad_Y_X_T);
 
             matrix *grad_y_X = matrix_create(1, t->prev1->size);
-            matrix_mul(grad_behind, grad_Y_X_T, grad_y_X);
+            matrix_mul(G, grad_Y_X_T, grad_y_X);
 
             array_add(grad_y_X->data, t->prev1->grad, t->prev1->grad, t->prev1->size);
 
@@ -1008,7 +959,7 @@ void backward(tensor *t)
                 kronecker_product(U_1_m, I_n, grad_Y_X_T);
 
                 matrix *grad_y_X = matrix_create(1, m*n);
-                matrix_mul(grad_behind, grad_Y_X_T, grad_y_X);
+                matrix_mul(G, grad_Y_X_T, grad_y_X);
 
                 array_add(grad_y_X->data, t->prev1->grad, t->prev1->grad, m*n);
 
@@ -1025,7 +976,7 @@ void backward(tensor *t)
                 matrix *grad_Y_X_T = matrix_create(m, m*n);
                 kronecker_product(I_m, U_1_n, grad_Y_X_T);
                 matrix *grad_y_X = matrix_create(1, m*n);
-                matrix_mul(grad_behind, grad_Y_X_T, grad_y_X);
+                matrix_mul(G, grad_Y_X_T, grad_y_X);
 
                 array_add(grad_y_X->data, t->prev1->grad, t->prev1->grad, m*n);
 
@@ -1046,19 +997,9 @@ void backward(tensor *t)
             #ifdef DEBUG
             printf("\033[31m EXP!\033[0m\n");
             #endif
-            // if(t->prev1->grad != NULL) array_constant(t->prev1->grad, t->prev1->size, 0.0);
-        //     printf("exp信号！！！\n");
-        //     show_grad(t->prev1);
-        //     printf("grad behind:\n");
-        //     matrix_show(grad_behind);
             /*假设Y=exp(X)*/
-            // tensor *Y = t;
-            // float *grad_Y_X_DIAG = t->data;
-            // (float *)malloc(t->size * sizeof(float));
-            // array_exp(t->prev1->data, grad_Y_X_DIAG, t->size);
-
             float *grad_y_X = (float *)malloc(t->size * sizeof(float));
-            array_times(grad_behind->data, t->data, grad_y_X, t->size);
+            array_times(G->data, t->data, grad_y_X, t->size);
 
             array_add(grad_y_X, t->prev1->grad, t->prev1->grad, t->size);
             // free(grad_Y_X_DIAG);
@@ -1078,7 +1019,7 @@ void backward(tensor *t)
             #ifdef DEBUG
             printf("\033[31m ADD_BROAD_1!\033[0m\n");
             #endif
-            float *grad_y_A = grad_behind->data;
+            float *grad_y_A = G->data;
             array_add(grad_y_A, t->prev1->grad, t->prev1->grad, t->size);
             t->prev1->num_quotes--;
         }
@@ -1099,7 +1040,7 @@ void backward(tensor *t)
             matrix *grad_Y_b_T = matrix_create(k*m*n, m);
             kronecker_product(temp, U_n_1, grad_Y_b_T);
             matrix *grad_y_b = matrix_create(1, m);
-            matrix_mul(grad_behind, grad_Y_b_T, grad_y_b);
+            matrix_mul(G, grad_Y_b_T, grad_y_b);
 
             array_add(grad_y_b->data, t->prev2->grad, t->prev2->grad, t->prev2->size);
 
@@ -1126,7 +1067,7 @@ void backward(tensor *t)
             // array_constant(grad_Y_X_DIAG, t->size, c);
 
             float *grad_y_X = (float *)malloc(X->size * sizeof(float));
-            array_times_constant(grad_behind->data, grad_y_X, Y->size, c);
+            array_times_constant(G->data, grad_y_X, Y->size, c);
             array_add(grad_y_X, X->grad, X->grad, X->size);
 
             free(grad_y_X);
@@ -1155,8 +1096,7 @@ void backward(tensor *t)
             for(size_t j=0; j<k; j++)
             for(size_t i=0; i<m; i++)
             {
-                // array_constant(b_i, m, 1.0/(b->data[i]));
-                array_times_constant(grad_behind->data + j*m*n + i*n, grad_y_A + j*m*n + i*n, n, 1.0/(b->data[i]));
+                array_times_constant(G->data + j*m*n + i*n, grad_y_A + j*m*n + i*n, n, 1.0/(b->data[i]));
             }
             array_add(grad_y_A, A->grad, A->grad, A->size);
             free(grad_y_A);
@@ -1170,19 +1110,6 @@ void backward(tensor *t)
             #ifdef DEBUG
             printf("\033[31m DIV_BROAD_2!\033[0m\n");
             #endif
-            // float *grad_y_b = (float *)malloc(k*sizeof(float));
-
-            // float *b_i = (float *)malloc(m);
-            // for(size_t i=0; i<k; i++)
-            // {
-            //     array_constant(b_i, m, -1.0/(b->data[i] * b->data[i]));
-            //     array_times(A->data + i*m, b_i, b_i, m);
-            //     grad_y_b[i] = array_dot(grad_behind->data + i*m, b_i, m);
-            // }
-            
-            // array_add(grad_y_b, b->grad, b->grad, k);
-            // free(grad_y_b);
-            // free(b_i);
             float *grad_y_b = (float *)malloc(m*sizeof(float));
             float *A_k_m = (float *)malloc(n * sizeof(float));
             for(size_t i=0; i<m; i++)
@@ -1191,7 +1118,7 @@ void backward(tensor *t)
                 for(size_t j=0; j<k; j++)
                 {
                     array_times_constant(A->data + j*m*n + i*n, A_k_m, n, -1.0/(b->data[i] * b->data[i]));
-                    grad_y_b_i += array_dot(grad_behind->data + j*m*n + i*n, A_k_m, n);
+                    grad_y_b_i += array_dot(G->data + j*m*n + i*n, A_k_m, n);
                 }
                 grad_y_b[i] = grad_y_b_i;
             }
@@ -1213,7 +1140,7 @@ void backward(tensor *t)
             array_div_constant(t->prev1->data, grad_Y_X_DIAG, t->size, 1.0);
 
             float *grad_y_X = (float *)malloc(t->prev1->size * sizeof(float));
-            array_times(grad_behind->data, grad_Y_X_DIAG, grad_y_X, t->size);
+            array_times(G->data, grad_Y_X_DIAG, grad_y_X, t->size);
 
             array_add(grad_y_X, t->prev1->grad, t->prev1->grad, t->size);
 
@@ -1234,7 +1161,7 @@ void backward(tensor *t)
             for(size_t i=0; i<t->size; i++)
                 grad_Y_X_T_DIAG[i] = t->data[i]>0. ? 1. : 0.;
             float *grad_y_X = malloc((t->size)*sizeof(float));
-            array_times(grad_behind->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
+            array_times(G->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
 
             array_add(grad_y_X, t->prev1->grad, t->prev1->grad, t->size);
 
@@ -1252,15 +1179,13 @@ void backward(tensor *t)
             #ifdef DEBUG
             printf("\033[31m TIMES_1!\033[0m\n");
             #endif
-            float *grad_Y_X_T_DIAG = malloc((t->size)*sizeof(size_t));
-            memcpy(grad_Y_X_T_DIAG, t->prev2->data, (t->size)*sizeof(size_t));
+            float *grad_Y_X_T_DIAG = t->prev2->data;
             float *grad_y_X = malloc((t->size)*sizeof(size_t));
 
-            array_times(grad_behind->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
+            array_times(G->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
             
             array_add(grad_y_X, t->prev1->grad, t->prev1->grad, t->size);
 
-            free(grad_Y_X_T_DIAG);
             free(grad_y_X);
 
             t->prev1->num_quotes--;
@@ -1275,7 +1200,7 @@ void backward(tensor *t)
             memcpy(grad_Y_X_T_DIAG, t->prev1->data, (t->size)*sizeof(size_t));
             float *grad_y_X = malloc((t->size)*sizeof(size_t));
 
-            array_times(grad_behind->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
+            array_times(G->data, grad_Y_X_T_DIAG, grad_y_X, t->size);
             
             array_add(grad_y_X, t->prev2->grad, t->prev2->grad, t->size);
 
@@ -1288,7 +1213,7 @@ void backward(tensor *t)
     {
         if(t->prev1->requires_grad == true)
         {
-            array_add(grad_behind->data, t->prev1->grad, t->prev1->grad, t->prev1->size);
+            array_add(G->data, t->prev1->grad, t->prev1->grad, t->prev1->size);
 
             t->prev1->num_quotes--;
         }
@@ -1302,12 +1227,13 @@ void backward(tensor *t)
             kronecker_product(U_m_1, I_n, grad_Y_X_T);
 
             matrix *grad_y_X = matrix_create(1, m*n);
-            matrix_mul(grad_behind, grad_Y_X_T, grad_y_X);
+            matrix_mul(G, grad_Y_X_T, grad_y_X);
 
             array_add(grad_y_X->data, t->prev2->grad, t->prev2->grad, t->prev2->size);
 
             matrix_release(U_m_1);
             matrix_release(I_n);
+            matrix_release(grad_Y_X_T);
             matrix_release(grad_y_X);
 
             t->prev2->num_quotes--;
@@ -1318,9 +1244,8 @@ void backward(tensor *t)
         printf("backward error: unknow operator!\n");
         exit(-1);
     }
-    
 
-    free(grad_behind);
+    free(G);
 
     backward(t->prev1);
     backward(t->prev2);
